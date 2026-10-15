@@ -64,6 +64,12 @@ body{
   display:grid;grid-template-columns:repeat(6,1fr) 74px repeat(6,1fr);
   height:var(--row-h);flex:none;direction:ltr;
 }
+/* شماره خونه‌ها بیرون از تخته (بالا و پایین)، هم‌تراز با ستون‌ها */
+.nums-row{
+  display:grid;grid-template-columns:repeat(6,1fr) 74px repeat(6,1fr);
+  direction:ltr;font-size:.72rem;font-weight:700;color:var(--muted);
+  text-align:center;line-height:1.7;user-select:none;
+}
 #bar-area{
   position:absolute;top:0;bottom:0;left:50%;width:74px;transform:translateX(-50%);
   background:#150e07;border-left:2px solid var(--gold);border-right:2px solid var(--gold);
@@ -181,5 +187,6 @@ body{
   .btn{padding:8px 10px;font-size:.9rem}
   .board{--row-h:160px;--ck:28px;border-width:3px}
   #points-top,#points-bottom{grid-template-columns:repeat(6,1fr) 52px repeat(6,1fr)}
+  .nums-row{grid-template-columns:repeat(6,1fr) 52px repeat(6,1fr)}
   #bar-area{width:52px}
 }

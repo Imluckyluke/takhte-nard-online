@@ -235,6 +235,7 @@ function isLuckyRoll() {
   return G.turn === 'w';
 }
 var hintMove = null;
+var hintCacheKey = null, hintCacheMove = null;
 function markHint(m) {
   if (typeof m.from === 'number') {
     if (pointDivs[m.from]) pointDivs[m.from].classList.add('hint-from');
@@ -250,7 +251,7 @@ function markHint(m) {
   }
 }
 function appendHintMsg() {
-  if (!hintMove) return;
+  if (!validMoveShape(hintMove)) return;
   var box = $('message-box');
   var base = box.textContent.split('💡')[0];
   box.textContent = base + ' 💡 پیشنهاد: از ' + pointName(hintMove.from) + ' به ' + pointName(hintMove.to);
@@ -854,7 +855,12 @@ function botStep() {
     setTimeout(function () { endTurn(false); }, 800);
     return;
   }
-  var best = pickBotMove(all);
+  var best = bestSequenceMove(boardOf(G), 'b', G.movesLeft);
+  if (!best) {
+    showMsg('کامپیوتر حرکت دیگری ندارد.');
+    setTimeout(function () { endTurn(false); }, 800);
+    return;
+  }
   forceMove('b', best);
   if (G.phase === 'move' && G.turn === 'b' && G.movesLeft.length > 0) {
     botTimer = setTimeout(botStep, 800);
@@ -917,28 +923,122 @@ function enumerateMoves(b, color, diceLeft) {
   return res;
 }
 
-function pickBotMove(moves) {
-  // اولویت: خروج > زدن > خانه‌سازی > فرار از بار > جلوترین مهره
-  var best = null, bestScore = -1e9;
-  for (var i = 0; i < moves.length; i++) {
-    var m = moves[i];
-    var s = randFloat01() * 2;
-    if (m.to === 'off') s += 100;
-    if (m.hit) s += 50;
-    if (m.from === 'bar') s += 40;
-    if (m.to !== 'off') {
-      var p = G.points[m.to];
-      if (p.color === 'b' && p.count >= 1) s += 30; // خانه‌سازی / تقویت
-      else if (p.color === null) s += 12;
-      // مهره عقب‌تر را جلو بکش (ایندکس کوچک‌تر برای مشکی عقب‌تر است)
-      if (typeof m.from === 'number') s += (23 - m.from) * 0.4;
-      s += (m.to - (typeof m.from === 'number' ? m.from : -1)) * 0.2;
-    } else {
-      if (typeof m.from === 'number') s += (m.from) * 0.3;
-    }
-    if (s > bestScore) { bestScore = s; best = m; }
+/* ---------- موتور استراتژیک (ارزیابی صفحه + جست‌وجوی توالی) ---------- */
+// شانس‌های استاندارد زدن مستقیم از فاصله ۱ تا ۶ (از ۳۶ حالت تاس)
+var SHOTS = [0, 11, 12, 13, 14, 15, 15];
+
+function pipCount(b, color) {
+  var n = b.bar[color] * 25, i;
+  for (i = 0; i < 24; i++) {
+    if (b.points[i].color !== color) continue;
+    n += b.points[i].count * (color === 'w' ? (i + 1) : (24 - i));
   }
-  return best;
+  return n;
+}
+function isFivePoint(color, idx) {
+  return color === 'w' ? (idx === 4) : (idx === 19); // خانه ۵ / خانه ۲۰
+}
+function isBarPoint(color, idx) {
+  return color === 'w' ? (idx === 6) : (idx === 17); // خانه ۷ / خانه ۱۸
+}
+// مجموع خطر تک‌مهره‌ها: احتمال زده‌شدن مستقیم توسط حریف
+function blotDanger(b, me) {
+  var op = opp(me), danger = 0, i, j, d;
+  for (i = 0; i < 24; i++) {
+    if (b.points[i].color !== me || b.points[i].count !== 1) continue;
+    var dsum = 0;
+    for (j = 0; j < 24; j++) {
+      if (b.points[j].color !== op || b.points[j].count === 0) continue;
+      var dist = (me === 'w') ? (i - j) : (j - i);
+      if (dist >= 1 && dist <= 6) dsum += SHOTS[dist];
+    }
+    if (b.bar[op] > 0) {
+      for (d = 1; d <= 6; d++) {
+        if (entryIndex(op, d) === i) { dsum += 8; break; }
+      }
+    }
+    danger += Math.min(dsum, 25);
+  }
+  return danger;
+}
+// ارزیابی استاتیک صفحه از دید color (مثبت = بهتر)
+function evaluateBoard(b, color) {
+  var me = color, op = opp(color), s = 0, i, run, bestRun, made;
+  s += b.off[me] * 30;
+  s -= b.off[op] * 30;
+  s -= b.bar[me] * 25;
+  s += b.bar[op] * 12;
+  s += (pipCount(b, op) - pipCount(b, me)) * 0.4;
+  made = 0; run = 0; bestRun = 0;
+  var myBlots = 0;
+  for (i = 0; i < 24; i++) {
+    var p = b.points[i];
+    if (p.color === me && p.count >= 2) {
+      made++;
+      run++;
+      if (run > bestRun) bestRun = run;
+      if (isHomeIdx(op, i)) s += 6;   // لنگر در خانه حریف
+      if (isHomeIdx(me, i)) s += 3;   // خانه خودی
+      if (isFivePoint(me, i)) s += 6; // نقطه طلایی ۵
+      if (isBarPoint(me, i)) s += 4;  // نقطه بار
+    } else {
+      run = 0;
+    }
+    if (p.color === me && p.count === 1) myBlots++;
+  }
+  s += made * 4;
+  if (bestRun >= 2) s += bestRun * bestRun * 2; // سد (پرایم) پیوسته
+  s -= blotDanger(b, me) * 1.2;
+  s -= myBlots * 1.5;
+  return s;
+}
+function boardSig(b) {
+  var s = '', i, p;
+  for (i = 0; i < 24; i++) {
+    p = b.points[i];
+    s += (p.color === null) ? '0' : ((p.color === 'w' ? 'W' : 'B') + p.count);
+  }
+  return s + '|' + b.bar.w + ',' + b.bar.b + '|' + b.off.w + ',' + b.off.b;
+}
+function validMoveShape(m) {
+  if (!m) return false;
+  var fok = (m.from === 'bar') || (typeof m.from === 'number' && m.from >= 0 && m.from <= 23);
+  var tok = (m.to === 'off') || (typeof m.to === 'number' && m.to >= 0 && m.to <= 23);
+  return fok && tok && typeof m.die === 'number';
+}
+// بهترین حرکت اول: هر شروع ممکن را تا آخر تاس‌ها (حریصانه) ادامه بده و صفحه نهایی را ارزیابی کن
+function bestSequenceMove(b, color, diceLeft) {
+  var firsts = enumerateMoves(b, color, diceLeft);
+  if (firsts.length === 0) return null;
+  var bestM = null, bestS = -1e18, k;
+  for (k = 0; k < firsts.length; k++) {
+    if (!validMoveShape(firsts[k])) continue;
+    var c2 = cloneBoard(b);
+    applyMoveTo(c2, color, firsts[k]);
+    var rest = diceLeft.slice();
+    var di = rest.indexOf(firsts[k].die);
+    if (di >= 0) rest.splice(di, 1);
+    var guard = 0;
+    while (rest.length > 0 && guard++ < 6) {
+      var nx = enumerateMoves(c2, color, rest);
+      if (nx.length === 0) break;
+      var bm = null, bs = -1e18, q;
+      for (q = 0; q < nx.length; q++) {
+        if (!validMoveShape(nx[q])) continue;
+        var c3 = cloneBoard(c2);
+        applyMoveTo(c3, color, nx[q]);
+        var sc = evaluateBoard(c3, color);
+        if (sc > bs) { bs = sc; bm = nx[q]; }
+      }
+      if (!bm) break;
+      applyMoveTo(c2, color, bm);
+      var dj = rest.indexOf(bm.die);
+      if (dj >= 0) rest.splice(dj, 1); else break;
+    }
+    var score = evaluateBoard(c2, color) + randFloat01() * 0.5;
+    if (score > bestS) { bestS = score; bestM = firsts[k]; }
+  }
+  return bestM;
 }
 
 /* ---------------- آنلاین با PeerJS ---------------- */
@@ -1280,6 +1380,31 @@ function buildPoints() {
     d.style.gridRow = '1';
     bottom.appendChild(d);
   }
+  buildNums();
+}
+
+// شماره خونه‌ها بیرون از تخته (نوار بالا و پایین، هم‌تراز با ستون‌ها)
+function buildNums() {
+  var top = $('nums-top'), bottom = $('nums-bottom');
+  if (!top || !bottom) return;
+  top.innerHTML = ''; bottom.innerHTML = '';
+  var k, s;
+  for (k = 0; k < 12; k++) {
+    s = document.createElement('div');
+    s.className = 'num';
+    s.textContent = faNum(13 + k);
+    s.style.gridColumn = String(k < 6 ? (k + 1) : (k + 2));
+    s.style.gridRow = '1';
+    top.appendChild(s);
+  }
+  for (k = 0; k < 12; k++) {
+    s = document.createElement('div');
+    s.className = 'num';
+    s.textContent = faNum(12 - k);
+    s.style.gridColumn = String(k < 6 ? (k + 1) : (k + 2));
+    s.style.gridRow = '1';
+    bottom.appendChild(s);
+  }
 }
 
 function makePointDiv(i) {
@@ -1364,13 +1489,25 @@ function render() {
   $('bar-b').classList.toggle('selected', G.selected === 'bar');
   $('bar-w').classList.remove('hint-from'); $('bar-b').classList.remove('hint-from');
   $('off-w').classList.remove('hint-to'); $('off-b').classList.remove('hint-to');
-  // راهنمای مخفی (فقط محلی؛ هرگز ارسال نمی‌شود)
+  // راهنمای مخفی (فقط محلی؛ هرگز ارسال نمی‌شود) — با کش برای سرعت
   hintMove = null;
   if (cheat.unlocked && cheat.hint && G.phase === 'move' && G.movesLeft.length > 0 && canAct()) {
     try {
-      var hm = enumerateMoves(boardOf(G), G.turn, G.movesLeft);
-      if (hm.length > 0) { hintMove = pickBotMove(hm); markHint(hintMove); }
-    } catch (e) {}
+      var hkey = G.turn + ':' + G.movesLeft.join(',') + ':' + boardSig(boardOf(G));
+      if (hkey === hintCacheKey && validMoveShape(hintCacheMove)) {
+        hintMove = hintCacheMove;
+      } else {
+        var hm2 = enumerateMoves(boardOf(G), G.turn, G.movesLeft);
+        if (hm2.length > 0) {
+          var cand = bestSequenceMove(boardOf(G), G.turn, G.movesLeft);
+          if (validMoveShape(cand)) { hintMove = cand; hintCacheKey = hkey; hintCacheMove = cand; }
+          else { hintCacheKey = null; hintCacheMove = null; }
+        }
+      }
+      if (validMoveShape(hintMove)) markHint(hintMove); else hintMove = null;
+    } catch (e) { hintMove = null; }
+  } else {
+    hintCacheKey = null; hintCacheMove = null;
   }
   // خارج‌شده‌ها
   $('off-w-count').textContent = faNum(G.off.w);
