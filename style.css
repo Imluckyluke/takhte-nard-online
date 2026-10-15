@@ -9,12 +9,12 @@
 html,body{margin:0;padding:0}
 body{
   font-family:"Vazirmatn","Tahoma","IRANSans",Tahoma,sans-serif;
-  background:radial-gradient(circle at 50% 0%,#2a1f14,#14100b 70%);
+  background:#171310;
   color:var(--text); min-height:100vh; direction:rtl;
 }
 .app-header{
   display:flex;justify-content:space-between;align-items:center;gap:10px;
-  padding:10px 16px;background:linear-gradient(180deg,#2c2114,#1a130c);
+  padding:10px 16px;background:#211810;
   border-bottom:2px solid var(--gold);position:sticky;top:0;z-index:20;flex-wrap:wrap;
 }
 .logo{font-size:1.5rem;font-weight:800;color:var(--gold2)}
@@ -25,7 +25,7 @@ body{
   font-family:inherit;min-height:44px;touch-action:manipulation;
 }
 .btn:hover{background:#4a3823}
-.btn-gold{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#241a08;font-weight:700}
+.btn-gold{background:var(--gold);color:#241a08;font-weight:700}
 .btn-gold:hover{filter:brightness(1.08)}
 .btn-danger{background:#5c1a1a;border-color:var(--red)}
 .btn-small{padding:6px 10px;min-height:36px;font-size:.9rem}
@@ -56,8 +56,8 @@ body{
 /* ===== Board: 6 points | bar | 6 points ===== */
 .board{
   position:relative;display:flex;flex-direction:column;
-  background:linear-gradient(180deg,var(--wood2),var(--wood));
-  border:6px solid #6b4a1f;border-radius:14px;overflow:hidden;
+  background:#c69a5b;
+  border:6px solid #3d2a14;border-radius:14px;overflow:hidden;
   --row-h:230px;--ck:40px;
 }
 #points-top,#points-bottom{
@@ -94,8 +94,8 @@ body{
 .points-bottom .checker{margin-top:0;margin-bottom:calc(var(--ck) * -0.35)}
 .checker:first-child{margin-top:2px}
 .points-bottom .checker:first-child{margin-bottom:2px}
-.checker.white{background:radial-gradient(circle at 35% 30%,#fff,#cfc39f 70%,#8f8468);color:#333}
-.checker.black{background:radial-gradient(circle at 35% 30%,#555,#111 70%);color:#f5d76e}
+.checker.white{background:#f8f4e9;color:#3a2f1d}
+.checker.black{background:#211d19;color:#e9c860}
 .checker.selected{outline:3px solid var(--green);box-shadow:0 0 12px var(--green)}
 .count-badge{
   z-index:4;background:#000;color:#fff;border:1px solid var(--gold);border-radius:10px;

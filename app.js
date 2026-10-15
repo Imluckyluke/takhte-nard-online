@@ -184,6 +184,34 @@ var isHost = false;
 var myColor = 'w';
 var roomCode = null;
 var isConnected = false;
+
+/* -------- ذخیره و ادامه بازی بعد از رفرش -------- */
+var SESSION_KEY = 'takhtenard-session-v1';
+var sessionOn = false;      // فقط وقتی بازی واقعی شروع شده ذخیره کن
+var userLeft = false;       // خروج عمدی کاربر → تلاش مجدد نکن
+var reconnectTimer = null, reconnectTries = 0;
+var hostRetries = 0;
+function saveSession() {
+  if (!sessionOn) return;
+  try {
+    if (G.moveLog && G.moveLog.length > 60) G.moveLog = G.moveLog.slice(-60);
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      mode: mode, roomCode: roomCode, isHost: isHost, myColor: myColor, G: G
+    }));
+  } catch (e) {}
+}
+function loadSession() {
+  try {
+    var s = JSON.parse(localStorage.getItem(SESSION_KEY));
+    return (s && s.G) ? s : null;
+  } catch (e) { return null; }
+}
+function clearSession() {
+  sessionOn = false;
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  reconnectTries = 0;
+}
 var PEER_PREFIX = 'takhtenard-v1-';
 var pendingCubeOffer = 1;
 
@@ -412,6 +440,7 @@ function anyMoveExists(b, color, diceLeft) {
 
 function startGame(newMode) {
   mode = newMode || mode;
+  sessionOn = true; userLeft = false;
   var keepLog = [];
   G = freshState();
   G.moveLog = keepLog;
@@ -858,19 +887,27 @@ function pickBotMove(moves) {
 
 function peerAvailable() { return typeof window.Peer !== 'undefined'; }
 
-function hostGame() {
+function hostGame(keep) {
   if (!peerAvailable()) { showMsg('کتابخانه PeerJS بارگذاری نشد؛ اینترنت را بررسی کنید.'); return; }
   closeAllModals();
   cleanupPeer();
-  mode = 'online'; isHost = true; myColor = 'w'; isConnected = false;
-  roomCode = makeCode();
-  G = freshState(); setupBoard();
-  // تاس‌کشی آغازین همگام: میزبان می‌ریزد و در state می‌فرستد
-  var dw, db;
-  do { dw = randDie(); db = randDie(); } while (dw === db);
-  G.turn = dw > db ? 'w' : 'b';
-  addLog('اتاق ' + roomCode + ' ساخته شد. شما سفید هستید.');
-  addLog('تاس‌کشی: سفید ' + faNum(dw) + ' — مشکی ' + faNum(db) + '. شروع‌کننده: ' + colorName(G.turn));
+  userLeft = false; hostRetries = 0;
+  mode = 'online'; isHost = true; isConnected = false;
+  if (keep && roomCode) {
+    myColor = 'w';
+    addLog('اتاق ' + roomCode + ' دوباره باز شد؛ در انتظار وصل شدن مجدد حریف...');
+  } else {
+    myColor = 'w';
+    roomCode = makeCode();
+    G = freshState(); setupBoard();
+    // تاس‌کشی آغازین همگام: میزبان می‌ریزد و در state می‌فرستد
+    var dw, db;
+    do { dw = randDie(); db = randDie(); } while (dw === db);
+    G.turn = dw > db ? 'w' : 'b';
+    addLog('اتاق ' + roomCode + ' ساخته شد. شما سفید هستید.');
+    addLog('تاس‌کشی: سفید ' + faNum(dw) + ' — مشکی ' + faNum(db) + '. شروع‌کننده: ' + colorName(G.turn));
+  }
+  sessionOn = true;
   try {
     peer = new Peer(PEER_PREFIX + roomCode);
   } catch (e) { showMsg('خطا در ساخت اتصال: ' + e.message); return; }
@@ -882,6 +919,7 @@ function hostGame() {
   openModal('modal-wait');
   updateRoomBar();
   peer.on('open', function () {
+    hostRetries = 0;
     $('wait-status').textContent = 'منتظر حریف... لینک را بفرستید.';
     showMsg('اتاق آماده است. کد: ' + roomCode);
   });
@@ -890,22 +928,38 @@ function hostGame() {
     wireConn();
   });
   peer.on('error', function (err) {
-    $('wait-status').textContent = 'خطا: ' + (err && err.type ? err.type : 'نامشخص');
+    var t = err && err.type ? err.type : '';
+    if (keep && t === 'unavailable-id' && hostRetries < 6) {
+      // بعد از رفرش، شناسه قبلی هنوز آزاد نشده؛ چند ثانیه بعد دوباره تلاش کن
+      hostRetries++;
+      $('wait-status').textContent = 'در حال باز کردن مجدد اتاق... (' + faNum(hostRetries) + ')';
+      setTimeout(function () { if (mode === 'online' && isHost && !userLeft) hostGame(true); }, 2500);
+      return;
+    }
+    $('wait-status').textContent = 'خطا: ' + (t || 'نامشخص');
     showMsg('خطای اتصال. دوباره تلاش کنید.');
   });
   render();
 }
 
-function joinGame(code) {
+function joinGame(code, keep) {
   code = String(code || '').trim().toUpperCase();
   if (!/^[A-Z0-9]{5}$/.test(code)) { showMsg('کد اتاق باید ۵ حرف/عدد باشد.'); return; }
   if (!peerAvailable()) { showMsg('کتابخانه PeerJS بارگذاری نشد؛ اینترنت را بررسی کنید.'); return; }
   closeAllModals();
   cleanupPeer();
-  mode = 'online'; isHost = false; myColor = 'b'; isConnected = false;
+  userLeft = false;
+  mode = 'online'; isHost = false; isConnected = false;
   roomCode = code;
-  G = freshState(); setupBoard();
-  addLog('در حال اتصال به اتاق ' + code + ' ... شما مشکی هستید.');
+  if (keep && G) {
+    myColor = 'b';
+    addLog('وصل شدن مجدد به اتاق ' + code + ' ...');
+  } else {
+    myColor = 'b';
+    G = freshState(); setupBoard();
+    addLog('در حال اتصال به اتاق ' + code + ' ... شما مشکی هستید.');
+  }
+  sessionOn = true;
   updateRoomBar();
   try {
     peer = new Peer();
@@ -923,10 +977,48 @@ function joinGame(code) {
   render();
 }
 
+/* وصل مجدد مهمان بدون از دست دادن صفحه بازی (بعد از رفرش یا قطعی) */
+function reconnectGuest() {
+  if (mode !== 'online' || isHost || !roomCode || userLeft) return;
+  try { if (conn) conn.close(); } catch (e) {}
+  try { if (peer) peer.destroy(); } catch (e) {}
+  conn = null; peer = null;
+  var code = roomCode;
+  try {
+    peer = new Peer();
+  } catch (e) { scheduleReconnect(); return; }
+  peer.on('open', function () {
+    try { conn = peer.connect(PEER_PREFIX + code, { reliable: true }); }
+    catch (e) { scheduleReconnect(); return; }
+    wireConn();
+  });
+  peer.on('error', function () { scheduleReconnect(); });
+}
+
+function scheduleReconnect() {
+  if (mode !== 'online' || isHost || !roomCode || userLeft) return;
+  if (G.phase === 'over') return;
+  if (reconnectTimer) return;
+  reconnectTries++;
+  if (reconnectTries > 25) {
+    reconnectTries = 0;
+    showMsg('وصل نشد. کد اتاق: ' + roomCode + ' — از منو دوباره وارد شوید.');
+    return;
+  }
+  var st = $('conn-status');
+  if (st) st.textContent = 'تلاش مجدد... 🔄 (' + faNum(reconnectTries) + ')';
+  reconnectTimer = setTimeout(function () {
+    reconnectTimer = null;
+    if (mode === 'online' && !isHost && !isConnected && !userLeft) reconnectGuest();
+  }, 3000);
+}
+
 function wireConn() {
   if (!conn) return;
   conn.on('open', function () {
     isConnected = true;
+    reconnectTries = 0;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     updateRoomBar();
     showMsg('حریف وصل شد! ' + (G.turn === myColor ? 'نوبت شماست.' : 'نوبت حریف است.'));
     addLog('حریف وصل شد.');
@@ -939,8 +1031,15 @@ function wireConn() {
   conn.on('close', function () {
     isConnected = false;
     updateRoomBar();
-    showMsg('اتصال حریف قطع شد.');
-    addLog('اتصال حریف قطع شد.');
+    if (mode === 'online' && !isHost && !userLeft && roomCode && G.phase !== 'over') {
+      // قطع شدن ناخواسته مهمان (مثلاً رفرش میزبان) → تلاش خودکار برای وصل مجدد
+      showMsg('اتصال قطع شد؛ تلاش برای وصل شدن مجدد... 🔄');
+      addLog('اتصال قطع شد؛ تلاش مجدد برای ورود به اتاق...');
+      scheduleReconnect();
+    } else {
+      showMsg('اتصال حریف قطع شد.');
+      addLog('اتصال حریف قطع شد.');
+    }
   });
   conn.on('error', function () {
     isConnected = false;
@@ -1206,6 +1305,7 @@ function render() {
   markOffTray();
   renderLog();
   updateRoomBar();
+  saveSession();
 }
 
 function markOffTray() {
@@ -1381,6 +1481,7 @@ function bindUI() {
   $('btn-start-local').addEventListener('click', function () { roomCode = null; startGame('local'); });
   $('btn-start-bot').addEventListener('click', function () { roomCode = null; startGame('bot'); });
   $('btn-cancel-wait').addEventListener('click', function () {
+    userLeft = true; clearSession();
     closeModal('modal-wait'); cleanupPeer(); mode = 'local'; roomCode = null; updateRoomBar();
   });
 
@@ -1404,21 +1505,32 @@ function bindUI() {
     }
   });
   $('btn-to-home').addEventListener('click', function () {
+    userLeft = true; clearSession();
     closeModal('modal-gameover'); openModal('modal-home');
   });
 
-  // اتاق
-  $('btn-copy').addEventListener('click', function () {
-    var code = $('room-code').textContent;
-    var done = function () { showMsg('کد اتاق کپی شد: ' + code); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(code).then(done, function () { showMsg('کپی نشد. کد: ' + code); });
-    } else {
+  // اتاق — کپی کد و لینک
+  function copyText(txt, okMsg) {
+    var done = function () { showMsg(okMsg); };
+    var fallback = function () {
       var ta = document.createElement('textarea');
-      ta.value = code; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); done(); } catch (e) { showMsg('کپی نشد. کد: ' + code); }
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { showMsg('کپی نشد: ' + txt); }
       document.body.removeChild(ta);
-    }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done, fallback);
+    } else fallback();
+  }
+  $('btn-copy').addEventListener('click', function () {
+    copyText($('room-code').textContent, 'کد اتاق کپی شد: ' + $('room-code').textContent);
+  });
+  $('btn-copy-code-wait').addEventListener('click', function () {
+    copyText(roomCode || '', 'کد اتاق کپی شد: ' + (roomCode || ''));
+  });
+  $('btn-copy-link-wait').addEventListener('click', function () {
+    copyText(shareLinkFor(roomCode || ''), 'لینک دعوت کپی شد! بفرستید برای دوستتان ✅');
   });
   $('share-link').addEventListener('click', function (e) {
     var link = shareLinkFor(roomCode || '');
@@ -1458,16 +1570,52 @@ function init() {
   addLog('به تخته نرد خوش آمدید! یک حالت را انتخاب کنید.');
   showMsg('از منوی خانه یک حالت بازی انتخاب کنید.');
   render();
-  // لینک دعوت ?join=CODE
+  // لینک دعوت ?join=CODE (اولویت با لینک است) وگرنه ادامه بازی قبلی بعد از رفرش
   try {
     var m = location.search.match(/[?&]join=([A-Za-z0-9]{5})/);
     if (m) {
+      clearSession();
       $('join-code-input').value = m[1].toUpperCase();
       showMsg('لینک دعوت دریافت شد. در حال ورود به اتاق ' + m[1].toUpperCase() + ' ...');
       joinGame(m[1]);
+    } else {
+      var s = loadSession();
+      if (s && s.G && s.G.phase !== 'over') restoreSession(s);
+      else clearSession();
     }
   } catch (e) {}
   updateRoomBar();
+}
+
+/* برگرداندن بازی ذخیره‌شده بعد از رفرش صفحه */
+function restoreSession(s) {
+  mode = s.mode || 'local';
+  roomCode = s.roomCode || null;
+  isHost = !!s.isHost;
+  myColor = s.myColor || 'w';
+  G = s.G;
+  G.selected = null; G.dests = [];
+  sessionOn = true; userLeft = false;
+  closeAllModals();
+  if (mode === 'online' && roomCode) {
+    if (isHost) {
+      addLog('بازی قبلی برگردانده شد؛ اتاق ' + roomCode + ' دوباره باز می‌شود...');
+      showMsg('ادامه بازی قبلی — در انتظار وصل شدن مجدد حریف... 🔄');
+      hostGame(true);
+    } else {
+      addLog('بازی قبلی برگردانده شد؛ وصل شدن مجدد به اتاق ' + roomCode + ' ...');
+      showMsg('ادامه بازی قبلی — در حال وصل شدن به اتاق... 🔄');
+      updateRoomBar();
+      render();
+      reconnectGuest();
+    }
+  } else {
+    addLog('بازی قبلی برگردانده شد 👍 ادامه بدهید!');
+    showMsg('ادامه بازی قبلی — موفق باشید! 🎲');
+    updateRoomBar();
+    render();
+  }
+  maybeBotTurn();
 }
 
 /* هوک تست خودکار (اثری روی بازی ندارد) */
