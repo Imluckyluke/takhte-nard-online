@@ -1136,10 +1136,6 @@ function makePointDiv(i) {
   var stack = document.createElement('div');
   stack.className = 'checkers';
   d.appendChild(stack);
-  var lbl = document.createElement('div');
-  lbl.className = 'pnum';
-  lbl.textContent = faNum(pnum);
-  d.appendChild(lbl);
   pointDivs[i] = d;
   (function (idx) {
     d.addEventListener('click', function () { onPointClick(idx); });
