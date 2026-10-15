@@ -10,7 +10,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
 function $(id) { return document.getElementById(id); }
 
-var FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶'];
+var FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 function faNum(n) {
   n = String(n);
   var out = '';
@@ -1522,6 +1522,8 @@ function render() {
     var t = 'نوبت ' + colorName(G.turn) + ' (' + (G.phase === 'roll' ? 'تاس بریزید' : 'حرکت کنید') + ')';
     if (mode === 'online' && isConnected) t += G.turn === myColor ? ' — نوبت شماست ✅' : ' — نوبت حریف ⏳';
     if (mode === 'bot') t += G.turn === 'w' ? ' — نوبت شماست ✅' : ' — نوبت کامپیوتر 🤖';
+    // نشان محلی تاس خوش‌شانس (فقط روی همین گوشی دیده می‌شود، هرگز ارسال نمی‌شود)
+    if (cheat.unlocked && cheat.lucky && isLuckyRoll()) t += ' 🍀';
     banner.textContent = t;
   }
   // کیوب
