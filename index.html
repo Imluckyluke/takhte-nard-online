@@ -9,7 +9,7 @@
 </head>
 <body>
 <header class="app-header">
-  <div class="logo">🎲 تخته نرد</div>
+  <div class="logo" id="logo">🎲 تخته نرد</div>
   <nav class="menu">
     <button id="btn-online" class="btn btn-gold">🌐 بازی آنلاین</button>
     <button id="btn-local" class="btn">👥 دو نفره</button>
@@ -106,6 +106,37 @@
     </div>
     <p>وضعیت: <span id="wait-status">انتظار اتصال...</span></p>
     <button id="btn-cancel-wait" class="btn">انصراف</button>
+  </div>
+</div>
+
+<!-- مودال کد مخفی -->
+<div id="modal-secret-code" class="modal">
+  <div class="modal-card">
+    <h2>🤫 ورود مخفی</h2>
+    <p class="muted">کد را وارد کنید:</p>
+    <div class="join-row">
+      <input id="secret-code-input" type="password" placeholder="کد..." maxlength="20">
+      <button id="btn-secret-code-ok" class="btn btn-gold">تأیید</button>
+    </div>
+    <div class="modal-btns">
+      <button id="btn-secret-code-cancel" class="btn">بستن</button>
+    </div>
+  </div>
+</div>
+
+<!-- منوی مخفی (فقط همین گوشی) -->
+<div id="modal-secret" class="modal">
+  <div class="modal-card">
+    <h2>🤫 منوی مخفی</h2>
+    <p class="muted">فقط روی همین گوشی فعال است؛ برای حریف چیزی فرستاده نمی‌شود.</p>
+    <div class="modal-btns">
+      <button id="btn-secret-hint" class="btn">💡 راهنمای بهترین حرکت: خاموش</button>
+      <button id="btn-secret-lucky" class="btn">🍀 تاس خوش‌شانس ‎+۵٪: خاموش</button>
+    </div>
+    <p class="muted">راهنما: بعد از هر تاس، بهترین حرکت را نشان می‌دهد.<br>تاس خوش‌شانس: در نوبت شما تاس‌ها به‌طور میانگین ۵٪ بهتر می‌آیند (آنلاین: فقط نوبت شما؛ دو نفره: سفید).</p>
+    <div class="modal-btns">
+      <button id="btn-secret-close" class="btn btn-gold">بستن</button>
+    </div>
   </div>
 </div>
 

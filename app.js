@@ -212,6 +212,54 @@ function clearSession() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   reconnectTries = 0;
 }
+
+/* -------- منوی مخفی (فقط همین گوشی؛ هرگز برای حریف ارسال نمی‌شود) -------- */
+var cheat = { unlocked: false, hint: false, lucky: false };
+try {
+  var _savedCheat = JSON.parse(localStorage.getItem('takhtenard-cheat'));
+  if (_savedCheat && _savedCheat.unlocked) cheat = _savedCheat;
+} catch (e) {}
+function saveCheat() {
+  try { localStorage.setItem('takhtenard-cheat', JSON.stringify(cheat)); } catch (e) {}
+}
+function luckyDie() {
+  // میانگین ~۵٪ بهتر: تاس ۱ و ۲ با احتمال ۲۵٪ یک بار دیگر ریخته می‌شود
+  var d = randDie();
+  if (d <= 2 && randFloat01() < 0.25) d = randDie();
+  return d;
+}
+function isLuckyRoll() {
+  if (!cheat.unlocked || !cheat.lucky) return false;
+  if (mode === 'online') return G.turn === myColor;
+  if (mode === 'bot') return true; // در این حالت فقط بازیکن تاس می‌ریزد
+  return G.turn === 'w';
+}
+var hintMove = null;
+function markHint(m) {
+  if (typeof m.from === 'number') {
+    if (pointDivs[m.from]) pointDivs[m.from].classList.add('hint-from');
+  } else if (m.from === 'bar') {
+    var bw = G.turn === 'w' ? $('bar-w') : $('bar-b');
+    if (bw) bw.classList.add('hint-from');
+  }
+  if (typeof m.to === 'number') {
+    if (pointDivs[m.to]) pointDivs[m.to].classList.add('hint-to');
+  } else if (m.to === 'off') {
+    var ow = G.turn === 'w' ? $('off-w') : $('off-b');
+    if (ow) ow.classList.add('hint-to');
+  }
+}
+function appendHintMsg() {
+  if (!hintMove) return;
+  var box = $('message-box');
+  var base = box.textContent.split('💡')[0];
+  box.textContent = base + ' 💡 پیشنهاد: از ' + pointName(hintMove.from) + ' به ' + pointName(hintMove.to);
+}
+function updateSecretUI() {
+  var h = $('btn-secret-hint'), l = $('btn-secret-lucky');
+  if (h) h.textContent = '💡 راهنمای بهترین حرکت: ' + (cheat.hint ? 'روشن ✅' : 'خاموش');
+  if (l) l.textContent = '🍀 تاس خوش‌شانس ‎+۵٪: ' + (cheat.lucky ? 'روشن ✅' : 'خاموش');
+}
 var PEER_PREFIX = 'takhtenard-v1-';
 var pendingCubeOffer = 1;
 
@@ -364,7 +412,11 @@ function sequenceUsesBoth(b, color, d1, d2) {
 
 // قانون «باید از هر دو تاس استفاده شود»: خروجی = تاس‌های مجاز ابتدای نوبت
 function computeAllowedDice(b, color, d1, d2) {
-  if (d1 === d2) return [d1, d1, d1, d1]; // دوبل = ۴ حرکت
+  if (d1 === d2) {
+    // دوبل = ۴ حرکت — ولی فقط اگر اصلاً حرکتی ممکن باشد (وگرنه نوبت باید رد شود، نه قفل!)
+    if (movesForDieOn(b, color, d1).length === 0) return [];
+    return [d1, d1, d1, d1];
+  }
   var m1 = movesForDieOn(b, color, d1);
   var m2 = movesForDieOn(b, color, d2);
   if (m1.length === 0 && m2.length === 0) return [];
@@ -486,7 +538,8 @@ function rollDice() {
   if (G.phase !== 'roll') { showMsg('الان وقت تاس ریختن نیست.'); return; }
   if (!canAct()) { showMsg('نوبت شما نیست.'); return; }
   // نتیجه نهایی همین لحظه با RNG امن مشخص می‌شود؛ انیمیشن فقط نمایش است (مثل بازی‌های واقعی)
-  var d1 = randDie(), d2 = randDie();
+  var useLucky = isLuckyRoll();
+  var d1 = useLucky ? luckyDie() : randDie(), d2 = useLucky ? luckyDie() : randDie();
   isRolling = true;
   var rb = $('btn-roll');
   if (rb) rb.disabled = true;
@@ -526,6 +579,7 @@ function finalizeRoll(d1, d2) {
   }
   render();
   dicePop();
+  appendHintMsg();
   broadcastState();
   maybeBotTurn();
 }
@@ -580,7 +634,11 @@ function doMove(from, to) {
     setTimeout(function () { endTurn(false); }, 1100);
     return true;
   }
+  if (from === 'bar' && G.movesLeft.length > 0) {
+    showMsg('مهره از بار وارد شد ✅ با تاس ' + G.movesLeft.map(faNum).join(' و ') + ' ادامه بده — خانه‌های قابل بازی روشن است.');
+  }
   render();
+  appendHintMsg();
   broadcastState();
   maybeBotTurn();
   return true;
@@ -1243,6 +1301,15 @@ function makePointDiv(i) {
 }
 function render() {
   var i, p, d, stack, c, j;
+  // پیش‌محاسبه مهره‌های قابل حرکت (برای راهنمای can-move)
+  var movableFrom = {};
+  if (G.phase === 'move' && G.movesLeft.length > 0 && canAct()) {
+    for (var mi = 0; mi < 24; mi++) {
+      if (G.points[mi].color === G.turn && G.points[mi].count > 0) {
+        if (destsForFrom(boardOf(G), G.turn, mi, G.movesLeft).length > 0) movableFrom[mi] = true;
+      }
+    }
+  }
   for (i = 0; i < 24; i++) {
     d = pointDivs[i];
     if (!d) continue;
@@ -1264,17 +1331,47 @@ function render() {
       stack.appendChild(badge);
     }
     d.classList.toggle('selected', G.selected === i);
+    d.classList.remove('hint-from'); d.classList.remove('hint-to');
     var isDest = false;
     for (var k = 0; k < G.dests.length; k++) {
       if (G.dests[k].to === i) { isDest = true; break; }
     }
     d.classList.toggle('legal-dest', isDest);
+    // راهنما: مهره‌هایی که با تاس باقی‌مانده حرکت دارند، ملایم روشن می‌شوند
+    var canMv = false;
+    if (movableFrom[i]) canMv = true;
+    d.classList.toggle('can-move', canMv);
   }
-  // بار
+  // بار — نمایش شکل واقعی مهره‌های بیرون (قابل لمس برای ورود)
   $('bar-w-count').textContent = faNum(G.bar.w);
   $('bar-b-count').textContent = faNum(G.bar.b);
+  var barCols = [['w', 'bar-w'], ['b', 'bar-b']];
+  for (var bi = 0; bi < barCols.length; bi++) {
+    (function (col, slotId) {
+      var slot = $(slotId);
+      var olds = slot.querySelectorAll('.checker');
+      for (var oi = 0; oi < olds.length; oi++) olds[oi].remove();
+      var cntEl = $(slotId + '-count');
+      var n = Math.min(G.bar[col], 3);
+      for (var j = 0; j < n; j++) {
+        var cd = document.createElement('div');
+        cd.className = 'checker ' + (col === 'w' ? 'white' : 'black');
+        slot.insertBefore(cd, cntEl);
+      }
+    })(barCols[bi][0], barCols[bi][1]);
+  }
   $('bar-w').classList.toggle('selected', G.selected === 'bar');
   $('bar-b').classList.toggle('selected', G.selected === 'bar');
+  $('bar-w').classList.remove('hint-from'); $('bar-b').classList.remove('hint-from');
+  $('off-w').classList.remove('hint-to'); $('off-b').classList.remove('hint-to');
+  // راهنمای مخفی (فقط محلی؛ هرگز ارسال نمی‌شود)
+  hintMove = null;
+  if (cheat.unlocked && cheat.hint && G.phase === 'move' && G.movesLeft.length > 0 && canAct()) {
+    try {
+      var hm = enumerateMoves(boardOf(G), G.turn, G.movesLeft);
+      if (hm.length > 0) { hintMove = pickBotMove(hm); markHint(hintMove); }
+    } catch (e) {}
+  }
   // خارج‌شده‌ها
   $('off-w-count').textContent = faNum(G.off.w);
   $('off-b-count').textContent = faNum(G.off.b);
@@ -1540,6 +1637,42 @@ function bindUI() {
     }
   });
 
+  // منوی مخفی: ۵ بار لمس لوگو در ۳ ثانیه
+  var logoTaps = [];
+  $('logo').addEventListener('click', function () {
+    var now = Date.now();
+    logoTaps.push(now);
+    while (logoTaps.length > 0 && now - logoTaps[0] > 3000) logoTaps.shift();
+    if (logoTaps.length >= 5) {
+      logoTaps = [];
+      $('secret-code-input').value = '';
+      openModal('modal-secret-code');
+    }
+  });
+  function trySecretCode() {
+    var v = $('secret-code-input').value.trim();
+    if (v.toLowerCase() === 'hadi') {
+      cheat.unlocked = true; saveCheat();
+      updateSecretUI();
+      closeModal('modal-secret-code');
+      openModal('modal-secret');
+      showMsg('🤫 منوی مخفی باز شد (فقط همین گوشی).');
+    } else {
+      showMsg('کد اشتباه است.');
+    }
+  }
+  $('btn-secret-code-ok').addEventListener('click', trySecretCode);
+  $('btn-secret-code-cancel').addEventListener('click', function () { closeModal('modal-secret-code'); });
+  $('secret-code-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') trySecretCode(); });
+  $('btn-secret-hint').addEventListener('click', function () {
+    cheat.hint = !cheat.hint; saveCheat(); updateSecretUI(); render();
+  });
+  $('btn-secret-lucky').addEventListener('click', function () {
+    cheat.lucky = !cheat.lucky; saveCheat(); updateSecretUI();
+    showMsg(cheat.lucky ? '🍀 تاس خوش‌شانس روشن شد (فقط همین گوشی).' : '🍀 تاس خوش‌شانس خاموش شد.');
+  });
+  $('btn-secret-close').addEventListener('click', function () { closeModal('modal-secret'); });
+
   // چت
   $('btn-send-chat').addEventListener('click', sendChat);
   $('chat-input').addEventListener('keydown', function (e) {
@@ -1562,6 +1695,7 @@ function bindUI() {
 function init() {
   buildPoints();
   bindUI();
+  updateSecretUI();
   setupBoard();
   // تاس‌کشی نمایشی برای صفحه اول
   var dw, db;
@@ -1595,6 +1729,13 @@ function restoreSession(s) {
   myColor = s.myColor || 'w';
   G = s.G;
   G.selected = null; G.dests = [];
+  // نگهبان نشست‌های قدیمی: اگر تاس باقی‌مانده ولی هیچ حرکت قانونی نیست، نوبت را رد کن
+  try {
+    if (G.phase === 'move' && G.movesLeft.length > 0 && !anyMoveExists(boardOf(G), G.turn, G.movesLeft)) {
+      addLog('نشست قبلی بدون حرکت قانونی بود؛ نوبت رد شد.');
+      G.turn = opp(G.turn); G.phase = 'roll'; G.dice = []; G.movesLeft = [];
+    }
+  } catch (e) {}
   sessionOn = true; userLeft = false;
   closeAllModals();
   if (mode === 'online' && roomCode) {

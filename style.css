@@ -103,6 +103,11 @@ body{
 }
 .point.legal-dest{outline:3px solid var(--green);outline-offset:-3px;background:rgba(46,204,113,.25)}
 .point.legal-dest::after{content:"◉";color:var(--green);font-size:1.4rem;z-index:5}
+.point.can-move:not(.legal-dest):not(.selected){background:rgba(46,204,113,.16)}
+.point.hint-from{outline:3px dashed var(--gold);outline-offset:-3px}
+.point.hint-to{outline:3px dashed var(--green);outline-offset:-3px;background:rgba(46,204,113,.18)}
+.bar-slot.hint-from{outline:3px dashed var(--gold)}
+.off-tray.hint-to{outline:3px dashed var(--green)}
 .bar-area{flex-direction:column}
 .bar-col{display:flex;flex-direction:column;height:100%;width:100%}
 .bar-slot{
@@ -114,6 +119,8 @@ body{
 .bar-title{font-size:.75rem;color:var(--muted)}
 .bar-count{background:#000;border:1px solid var(--gold);border-radius:50%;min-width:30px;height:30px;
   display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.bar-slot .checker{width:26px;height:26px;min-width:26px;min-height:26px;margin-top:-16px;font-size:.6rem}
+.bar-slot .checker:first-child{margin-top:3px}
 .controls{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:10px}
 .dice-area{display:flex;gap:10px}
 .die{
