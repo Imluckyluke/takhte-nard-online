@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>تخته نرد آنلاین | Takhteh Nard</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<header class="app-header">
+  <div class="logo">🎲 تخته نرد</div>
+  <nav class="menu">
+    <button id="btn-online" class="btn btn-gold">🌐 بازی آنلاین</button>
+    <button id="btn-local" class="btn">👥 دو نفره</button>
+    <button id="btn-bot" class="btn">🤖 با کامپیوتر</button>
+    <button id="btn-help" class="btn btn-icon">❓ راهنما</button>
+  </nav>
+</header>
+
+<div id="room-bar" class="room-bar hidden">
+  <span>کد اتاق: <b id="room-code">-----</b></span>
+  <button id="btn-copy" class="btn btn-small">📋 کپی</button>
+  <a id="share-link" href="#" class="share-link">🔗 لینک دعوت</a>
+  <span id="conn-status" class="conn-status">قطع</span>
+</div>
+
+<main class="layout">
+  <section class="board-wrap">
+    <div id="turn-indicator" class="turn-banner">به تخته نرد خوش آمدید</div>
+
+    <div class="board-top-info">
+      <div id="off-b" class="off-tray off-black" title="خارج شده‌های مشکی"><span class="tray-label">خارج مشکی</span><span id="off-b-count" class="tray-count">0</span></div>
+      <div id="cube-display" class="cube-display" title="کیوب دوبل">کیوب: <b id="cube-value">1</b> <span id="cube-owner">وسط</span></div>
+      <div id="off-w" class="off-tray off-white" title="خارج شده‌های سفید"><span class="tray-label">خارج سفید</span><span id="off-w-count" class="tray-count">0</span></div>
+    </div>
+
+    <div id="board" class="board">
+      <div id="points-top" class="points-row points-top"></div>
+      <div id="bar-area" class="bar-area">
+        <div class="bar-col">
+          <div id="bar-b" class="bar-slot"><span class="bar-title">بار مشکی</span><span id="bar-b-count" class="bar-count">0</span></div>
+          <div class="bar-divider"></div>
+          <div id="bar-w" class="bar-slot"><span class="bar-title">بار سفید</span><span id="bar-w-count" class="bar-count">0</span></div>
+        </div>
+      </div>
+      <div id="points-bottom" class="points-row points-bottom"></div>
+    </div>
+
+    <div class="controls">
+      <div id="dice-area" class="dice-area">
+        <div id="die-0" class="die hidden"></div>
+        <div id="die-1" class="die hidden"></div>
+      </div>
+      <button id="btn-roll" class="btn btn-gold btn-big">🎲 تاس بریز</button>
+      <button id="btn-pass" class="btn">⏭ پایان حرکت / پاس</button>
+      <button id="btn-cube" class="btn">🎰 پیشنهاد دوبل</button>
+    </div>
+    <div id="message-box" class="message-box"></div>
+  </section>
+
+  <aside class="side-panel">
+    <div id="chat-box" class="chat-box hidden">
+      <h3>💬 چت بازی</h3>
+      <div id="chat-log" class="chat-log"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" type="text" placeholder="پیام بنویسید..." maxlength="300">
+        <button id="btn-send-chat" class="btn btn-small">ارسال</button>
+      </div>
+    </div>
+    <div class="log-box">
+      <h3>📜 سوابق حرکت</h3>
+      <div id="move-log" class="move-log"></div>
+    </div>
+  </aside>
+</main>
+
+<!-- مودال خانه -->
+<div id="modal-home" class="modal open">
+  <div class="modal-card">
+    <h2>🎲 تخته نرد (Backgammon)</h2>
+    <p>بازی کلاسیک تخته نرد: آنلاین، دو نفره یا با کامپیوتر.</p>
+    <div class="modal-btns">
+      <button id="btn-start-online" class="btn btn-gold">🌐 ساخت اتاق آنلاین (سفید)</button>
+      <div class="join-row">
+        <input id="join-code-input" type="text" placeholder="کد اتاق دوست..." maxlength="5">
+        <button id="btn-join-room" class="btn">ورود به اتاق</button>
+      </div>
+      <button id="btn-start-local" class="btn">👥 بازی دو نفره (یک صفحه)</button>
+      <button id="btn-start-bot" class="btn">🤖 بازی با کامپیوتر</button>
+      <button id="btn-home-help" class="btn btn-icon">❓ راهنمای بازی</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال انتظار -->
+<div id="modal-wait" class="modal">
+  <div class="modal-card">
+    <h2>⏳ در انتظار حریف...</h2>
+    <p>کد اتاق شما: <b id="wait-code">-----</b></p>
+    <p><a id="wait-link" href="#">🔗 لینک دعوت</a></p>
+    <p class="muted">این لینک را برای دوستتان بفرستید یا کد را بدهید تا وارد شود.</p>
+    <p>وضعیت: <span id="wait-status">انتظار اتصال...</span></p>
+    <button id="btn-cancel-wait" class="btn">انصراف</button>
+  </div>
+</div>
+
+<!-- مودال پایان -->
+<div id="modal-gameover" class="modal">
+  <div class="modal-card">
+    <h2 id="gameover-title">🏆 پایان بازی</h2>
+    <p id="gameover-text"></p>
+    <div class="modal-btns">
+      <button id="btn-again" class="btn btn-gold">🔄 بازی دوباره</button>
+      <button id="btn-to-home" class="btn">🏠 بازگشت</button>
+    </div>
+  </div>
+</div>
+
+<!-- مودال راهنما -->
+<div id="modal-help" class="modal">
+  <div class="modal-card modal-wide">
+    <h2>❓ راهنمای تخته نرد</h2>
+    <div class="help-text">
+      <h3>🎯 هدف</h3>
+      <p>هر بازیکن ۱۵ مهره دارد. سفید از خانه ۲۴ به سمت ۱ حرکت می‌کند (رو به پایین صفحه) و مشکی از ۱ به ۲۴. هر کس زودتر همه مهره‌ها را خارج کند (Bear off) برنده است.</p>
+      <h3>🎲 تاس</h3>
+      <p>در نوبت خود تاس بریزید. جفت (دوبل) یعنی ۴ حرکت. اول بازی هر طرف یک تاس می‌ریزد؛ تاس بزرگ‌تر شروع می‌کند.</p>
+      <h3>🚶 حرکت</h3>
+      <p>روی مهره خودتان بزنید تا مقصدهای مجاز سبز شوند، بعد روی مقصد بزنید. خانه‌ای که ۲ یا بیشتر مهره حریف دارد مسدود است. مهره تنها (بلات) را می‌توانید بزنید و به بار بفرستید.</p>
+      <h3>🚧 بار</h3>
+      <p>مهره روی بار باید اول وارد زمین شود: سفید با تاس d وارد خانه ‎۲۴-d+۱‎ می‌شود، مشکی وارد خانه d می‌شود. اگر خانه ورود مسدود باشد نمی‌توانید وارد شوید.</p>
+      <h3>🏁 خروج (Bear off)</h3>
+      <p>وقتی هر ۱۵ مهره در خانه خودی (سفید ۱ تا ۶، مشکی ۱۹ تا ۲۴) جمع شد می‌توانید خارج کنید: تاس دقیق، یا تاس بزرگ‌تر اگر مهره‌ای در خانه‌های بالاتر نباشد.</p>
+      <h3>📜 قانون استفاده حداکثری از تاس</h3>
+      <p>اگر هر دو تاس جداگانه قابل بازی‌اند ولی هیچ ترتیبی هر دو را استفاده نمی‌کند، فقط تاس بزرگ‌تر بازی می‌شود. اگر فقط یکی قابل بازی است همان بازی می‌شود. اگر هیچ حرکتی نیست نوبت خودکار رد می‌شود.</p>
+      <h3>🎰 کیوب دوبل</h3>
+      <p>قبل از تاس ریختن می‌توانید دوبل پیشنهاد دهید (۱→۲→۴→...→۶۴). قبول نکردن یعنی باخت. قبول کردن یعنی مالکیت کیوب با حریف و دو برابر شدن امتیاز.</p>
+      <h3>🏆 مارس و سه‌خال</h3>
+      <p>اگر بازنده هیچ مهره‌ای خارج نکرده باشد «مارس» (۲ برابر) و اگر علاوه بر آن مهره‌ای روی بار یا در خانه برنده داشته باشد «سه‌خال / بک‌گمون» (۳ برابر) محسوب می‌شود.</p>
+      <h3>🌐 بازی آنلاین</h3>
+      <p>«ساخت اتاق» بزنید، کد ۵ حرفی و لینک دعوت (?join=CODE) را برای دوستتان بفرستید. سازنده سفید است و شروع‌کننده با تاس‌کشی مشخص می‌شود.</p>
+    </div>
+    <button id="btn-close-help" class="btn btn-gold">بستن</button>
+  </div>
+</div>
+
+<!-- مودال پیشنهاد کیوب -->
+<div id="modal-cube" class="modal">
+  <div class="modal-card">
+    <h2>🎰 پیشنهاد دوبل!</h2>
+    <p id="cube-offer-text">حریف کیوب را به ۲ رساند. قبول می‌کنید؟</p>
+    <div class="modal-btns">
+      <button id="btn-cube-accept" class="btn btn-gold">✅ قبول</button>
+      <button id="btn-cube-decline" class="btn btn-danger">❌ قبول نمی‌کنم (باخت)</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
